@@ -28,29 +28,41 @@ class BinomialHeap<T: Comparable<T>> private constructor(private val trees: FLis
         fun <T : Comparable<T>> single(value: T): BinomialHeap<T> = BinomialHeap(flistOf(BinomialTree.single(value)))
     }
 
-    private fun merge(forest1: FList<BinomialTree<T>?>, forest2: FList<BinomialTree<T>?>): FList<BinomialTree<T>?> {
-        if (forest1 !is FList.Cons) return forest2
-        if (forest2 !is FList.Cons) return forest1
-        val tree1 = forest1.iterator().next()
-        val tree2 = forest2.iterator().next()
-        return when {
-            tree1 == null -> return merge(forest1.tail, forest2)
-            tree2 == null -> return merge(forest1, forest2.tail)
-            tree1.order < tree2.order -> FList.Cons(tree1, merge(forest1.tail, forest2))
-            tree1.order == tree2.order -> unionTreesSameOrder(tree1 + tree2, merge(forest1.tail, forest2.tail))
-            else -> FList.Cons(tree2, merge(forest1, forest2.tail))
-        }
+    private fun <T: Comparable<T>> BinomialTree<T>?.merge(other: BinomialTree<T>?) = when {
+        this == null -> other
+        other == null -> this
+        else -> this + other
     }
 
-    private fun unionTreesSameOrder(tree: BinomialTree<T>, merged: FList<BinomialTree<T>?>): FList<BinomialTree<T>?> {
-        if (merged !is FList.Cons) return FList.Cons(tree, FList.nil())
-
-        val nextTree = merged.iterator().next()
-        return when {
-            nextTree == null -> unionTreesSameOrder(tree, merged.tail)
-            tree.order == nextTree.order -> unionTreesSameOrder(tree + nextTree, merged.tail)
-            else -> FList.Cons(tree, merged)
+    private fun merge(forest1: FList<BinomialTree<T>?>, forest2: FList<BinomialTree<T>?>): FList<BinomialTree<T>?> {
+        val iter1 = forest1.iterator()
+        val iter2 = forest2.iterator()
+        val firstRes = (iter1.asSequence() zip iter2.asSequence()).fold(Pair<FList<BinomialTree<T>?>, BinomialTree<T>?>(FList.nil(), null)) { (res, tree3), (tree1, tree2) ->
+            if (tree3 == null) {
+                when {
+                    tree1 == null -> Pair(FList.Cons(tree2, res), null)
+                    tree2 == null -> Pair(FList.Cons(tree1, res), null)
+                    else -> Pair(FList.Cons(null, res), tree1 + tree2)
+                }
+            } else {
+                when {
+                    tree1 == null && tree2 == null -> Pair(FList.Cons(tree3, res), null)
+                    tree2 == null -> Pair(FList.Cons(null, res), tree1.merge(tree3))
+                    tree1 == null -> Pair(FList.Cons(null, res), tree2 + tree3)
+                    else -> Pair(FList.Cons(tree3, res), tree1 + tree2)
+                }
+            }
         }
+
+        val res = (if (iter1.hasNext()) iter1 else iter2).asSequence().fold(firstRes) { (res, tree2), tree1 ->
+            when {
+                tree1 == null -> Pair(FList.Cons(tree2, res), null)
+                tree2 == null -> Pair(FList.Cons(tree1, res), null)
+                else -> Pair(FList.Cons(null, res), tree1 + tree2)
+            }
+        }
+
+        return if (res.second == null) res.first.reverse() else FList.Cons(res.second, res.first).reverse()
     }
 
     /*
@@ -85,7 +97,15 @@ class BinomialHeap<T: Comparable<T>> private constructor(private val trees: FLis
      */
     fun drop(): BinomialHeap<T> {
         val minTree = getMinimum()
-        return BinomialHeap(merge(trees.filter { it != minTree }, minTree.children as FList<BinomialTree<T>?>))
+        val forest1 = createHeapTrees(minTree.children, 0).reverse()
+        val forest2 = trees.map { if (it == minTree) null else it }
+        return BinomialHeap(merge(forest1, forest2))
+    }
+
+    private fun createHeapTrees(trees: FList<BinomialTree<T>>, i: Int) : FList<BinomialTree<T>?> = when {
+        trees !is FList.Cons -> FList.nil()
+        i < trees.head.order -> FList.Cons(null, createHeapTrees(trees, i + 1))
+        else -> FList.Cons(trees.head, createHeapTrees(trees.tail, i + 1))
     }
 }
 
